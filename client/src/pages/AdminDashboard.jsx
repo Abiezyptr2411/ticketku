@@ -6,6 +6,8 @@ import api from '../services/api';
 import AdminStations from '../components/admin/AdminStations';
 import AdminTrains from '../components/admin/AdminTrains';
 import AdminSchedules from '../components/admin/AdminSchedules';
+import AdminBookings from '../components/admin/AdminBookings';
+import AdminUsers from '../components/admin/AdminUsers';
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
@@ -160,12 +162,8 @@ export default function AdminDashboard() {
                     {activeTab === 'Trains' && <AdminTrains />}
                     {activeTab === 'Stations' && <AdminStations />}
                     {activeTab === 'Schedules' && <AdminSchedules />}
-                    {(activeTab === 'Bookings' || activeTab === 'Users') && (
-                        <div className="text-center py-20 bg-white rounded-2xl border border-border">
-                            <h2 className="text-xl font-bold text-text-secondary mb-2">Coming Soon</h2>
-                            <p className="text-sm text-gray-400">This module is under development.</p>
-                        </div>
-                    )}
+                    {activeTab === 'Bookings' && <AdminBookings />}
+                    {activeTab === 'Users' && <AdminUsers />}
                 </div>
             </div>
         </div>
