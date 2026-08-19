@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { io } from 'socket.io-client';
 
 export default function SelectSeat() {
     const navigate = useNavigate();
     const savedPax = localStorage.getItem('booking_pax') || 1;
-    const paxCount = parseInt(savedPax, 10); // Dynamic pax count
+    const paxCount = parseInt(savedPax, 10);
     const scheduleId = localStorage.getItem('booking_schedule_id');
     const [selectedSeats, setSelectedSeats] = useState([]);
-    const [socket, setSocket] = useState(null);
     const [seats, setSeats] = useState([]);
     const [schedule, setSchedule] = useState(null);
     
@@ -27,27 +25,42 @@ export default function SelectSeat() {
         if(scheduleId) fetchData();
     }, [scheduleId]);
 
+    // Group seats: { coach -> { row -> { col -> seatObj } } }
+    const coachMap = useMemo(() => {
+        const map = {};
+        for (const seat of seats) {
+            const coach = seat.coach || '1';
+            const col = seat.seatNumber.replace(/[0-9]/g, '');
+            const row = parseInt(seat.seatNumber.replace(/[A-Za-z]/g, ''), 10);
+            if (!map[coach]) map[coach] = {};
+            if (!map[coach][row]) map[coach][row] = {};
+            map[coach][row][col] = seat;
+        }
+        return map;
+    }, [seats]);
+
+    const coachList = useMemo(() => Object.keys(coachMap).sort((a, b) => Number(a) - Number(b)), [coachMap]);
+
     const handleSeatClick = (seat) => {
-        if (seat.status === 'BOOKED' || seat.status === 'LOCKED') return;
-        
-        if (selectedSeats.includes(seat.seatNumber)) {
-            setSelectedSeats(selectedSeats.filter(s => s !== seat.seatNumber));
-        } else {
-            if (selectedSeats.length < paxCount) {
-                setSelectedSeats([...selectedSeats, seat.seatNumber]);
-            }
+        if (!seat || seat.status === 'BOOKED' || seat.status === 'LOCKED') return;
+        const sn = seat.seatNumber;
+        if (selectedSeats.includes(sn)) {
+            setSelectedSeats(selectedSeats.filter(s => s !== sn));
+        } else if (selectedSeats.length < paxCount) {
+            setSelectedSeats([...selectedSeats, sn]);
         }
     };
 
-    const getSeatColor = (seatNumber) => {
-        const seat = seats.find(s => s.seatNumber === seatNumber);
-        if (!seat) return 'bg-gray-100 text-gray-400';
-        
-        if (selectedSeats.includes(seatNumber)) return 'bg-primary text-white border-primary shadow-md shadow-primary/30';
+    const getSeatStyle = (seat) => {
+        if (!seat) return 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed';
+        if (selectedSeats.includes(seat.seatNumber)) return 'bg-primary text-white border-primary shadow-md shadow-primary/30';
         if (seat.status === 'BOOKED') return 'bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed line-through';
         if (seat.status === 'LOCKED') return 'bg-orange-100 text-orange-400 border-orange-200 cursor-not-allowed';
-        return 'bg-white text-text-primary border-border hover:border-primary hover:text-primary transition-colors cursor-pointer text-text-secondary font-medium';
+        return 'bg-white text-text-primary border-border hover:border-primary hover:text-primary transition-colors cursor-pointer font-medium';
     };
+
+    const COLS_LEFT = ['A', 'B'];
+    const COLS_RIGHT = ['C', 'D'];
 
     return (
         <div className="max-w-2xl mx-auto space-y-6 pb-32 animate-in fade-in duration-500 pt-6 px-4">
@@ -76,47 +89,72 @@ export default function SelectSeat() {
                 <div className="flex items-center"><div className="w-4 h-4 bg-orange-100 rounded mr-2 border border-orange-200"></div> Locked</div>
             </div>
 
-            {/* Coach View */}
-            <div className="bg-white rounded-[2rem] p-6 sm:p-10 shadow-lg border border-border relative overflow-hidden mt-6 mb-10">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-6 bg-gray-100 rounded-b-xl border-b border-x border-border flex items-center justify-center">
-                    <div className="w-16 h-1 bg-gray-300 rounded-full"></div>
-                </div>
-                
-                <h2 className="text-center font-black text-lg mb-8 mt-4 tracking-wide">COACH 1 <span className="text-primary">({schedule?.train?.class || ''})</span></h2>
-                
-                <div className="flex justify-between items-center px-2 mb-6 text-[10px] font-black text-text-secondary/60 uppercase tracking-[0.2em]">
-                    <span className="w-24 text-center">Window</span>
-                    <span className="w-8 text-center flex-1">Aisle</span>
-                    <span className="w-24 text-center">Window</span>
-                </div>
+            {seats.length === 0 && (
+                <div className="text-center py-10 text-text-secondary text-sm">Memuat kursi...</div>
+            )}
 
-                <div className="space-y-4">
-                    {[1,2,3,4,5,6,7,8,9,10].map(row => (
-                        <div key={row} className="flex justify-between items-center px-2">
-                            <div className="w-6 text-center text-xs font-black text-text-secondary/40 mr-2">{row}</div>
-                            <div className="flex space-x-3 sm:space-x-4">
-                                <div onClick={() => handleSeatClick({seatNumber: `A${row}`, status: seats.find(s=>s.seatNumber===`A${row}`)?.status })} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatColor(`A${row}`)}`}>
-                                    A{row}
-                                </div>
-                                <div onClick={() => handleSeatClick({seatNumber: `B${row}`, status: seats.find(s=>s.seatNumber===`B${row}`)?.status })} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatColor(`B${row}`)}`}>
-                                    B{row}
-                                </div>
-                            </div>
-                            <div className="flex-1 flex justify-center">
-                                <div className="w-1 h-1 bg-border rounded-full"></div>
-                            </div>
-                            <div className="flex space-x-3 sm:space-x-4">
-                                <div onClick={() => handleSeatClick({seatNumber: `C${row}`, status: seats.find(s=>s.seatNumber===`C${row}`)?.status })} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatColor(`C${row}`)}`}>
-                                    C{row}
-                                </div>
-                                <div onClick={() => handleSeatClick({seatNumber: `D${row}`, status: seats.find(s=>s.seatNumber===`D${row}`)?.status })} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatColor(`D${row}`)}`}>
-                                    D{row}
-                                </div>
-                            </div>
+            {/* Render each coach dynamically */}
+            {coachList.map(coach => {
+                const rows = Object.keys(coachMap[coach]).map(Number).sort((a, b) => a - b);
+                const coachSeats = coachMap[coach];
+                return (
+                    <div key={coach} className="bg-white rounded-[2rem] p-6 sm:p-10 shadow-lg border border-border relative overflow-hidden mt-6 mb-4">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-6 bg-gray-100 rounded-b-xl border-b border-x border-border flex items-center justify-center">
+                            <div className="w-16 h-1 bg-gray-300 rounded-full"></div>
                         </div>
-                    ))}
-                </div>
-            </div>
+                        
+                        <h2 className="text-center font-black text-lg mb-8 mt-4 tracking-wide">
+                            COACH {coach} <span className="text-primary">({schedule?.train?.class || ''})</span>
+                            <span className="block text-xs text-text-secondary font-normal mt-1">
+                                {rows.length * 4} kursi
+                                {coachList.length > 1 ? ` · Gerbong ${coach} dari ${coachList.length}` : ''}
+                            </span>
+                        </h2>
+                        
+                        <div className="flex justify-between items-center px-2 mb-6 text-[10px] font-black text-text-secondary/60 uppercase tracking-[0.2em]">
+                            <span className="w-24 text-center">Window</span>
+                            <span className="w-8 text-center flex-1">Aisle</span>
+                            <span className="w-24 text-center">Window</span>
+                        </div>
+
+                        <div className="space-y-4">
+                            {rows.map(row => (
+                                <div key={row} className="flex justify-between items-center px-2">
+                                    <div className="w-6 text-center text-xs font-black text-text-secondary/40 mr-2">{row}</div>
+                                    {/* Left: A, B */}
+                                    <div className="flex space-x-3 sm:space-x-4">
+                                        {COLS_LEFT.map(col => {
+                                            const seat = coachSeats[row]?.[col];
+                                            return (
+                                                <div key={col} onClick={() => handleSeatClick(seat)}
+                                                    className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatStyle(seat)}`}>
+                                                    {seat ? seat.seatNumber : `${col}${row}`}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {/* Aisle */}
+                                    <div className="flex-1 flex justify-center">
+                                        <div className="w-1 h-1 bg-border rounded-full"></div>
+                                    </div>
+                                    {/* Right: C, D */}
+                                    <div className="flex space-x-3 sm:space-x-4">
+                                        {COLS_RIGHT.map(col => {
+                                            const seat = coachSeats[row]?.[col];
+                                            return (
+                                                <div key={col} onClick={() => handleSeatClick(seat)}
+                                                    className={`w-10 h-12 sm:w-12 sm:h-14 rounded-[14px] flex items-center justify-center text-[13px] border-[2.5px] transition-all transform active:scale-95 ${getSeatStyle(seat)}`}>
+                                                    {seat ? seat.seatNumber : `${col}${row}`}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
 
             {/* Bottom Sticky Action */}
             <div className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t border-border shadow-[0_-10px_30px_rgba(0,0,0,0.08)] px-4 py-4 sm:px-6 flex justify-between items-center z-50 rounded-t-[2rem]">

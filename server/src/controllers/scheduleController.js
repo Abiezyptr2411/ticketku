@@ -54,18 +54,36 @@ exports.createSchedule = async (req, res) => {
         const schedule = await Schedule.create(req.body);
         
         const train = await Train.findById(schedule.train);
-        const capacity = train?.capacity || 40; 
-        const seatsToCreate = [];
-        const rows = Math.ceil(capacity / 4);
-        
-        for(let r=1; r<=rows; r++) {
-            if(seatsToCreate.length < capacity) seatsToCreate.push({ schedule: schedule._id, seatNumber: `A${r}`, status: 'AVAILABLE' });
-            if(seatsToCreate.length < capacity) seatsToCreate.push({ schedule: schedule._id, seatNumber: `B${r}`, status: 'AVAILABLE' });
-            if(seatsToCreate.length < capacity) seatsToCreate.push({ schedule: schedule._id, seatNumber: `C${r}`, status: 'AVAILABLE' });
-            if(seatsToCreate.length < capacity) seatsToCreate.push({ schedule: schedule._id, seatNumber: `D${r}`, status: 'AVAILABLE' });
-        }
-        await Seat.insertMany(seatsToCreate);
+        const totalCapacity = train?.capacity || 40;
 
+        // 40 seats per coach, 4 columns (A-B-C-D), rows = seatsPerCoach / 4
+        const SEATS_PER_COACH = 40;
+        const COLUMNS = ['A', 'B', 'C', 'D'];
+        const ROWS_PER_COACH = Math.ceil(SEATS_PER_COACH / COLUMNS.length); // 10
+
+        const totalCoaches = Math.ceil(totalCapacity / SEATS_PER_COACH);
+        const seatsToCreate = [];
+        let seatsLeft = totalCapacity;
+
+        for (let c = 1; c <= totalCoaches; c++) {
+            const coachCapacity = Math.min(SEATS_PER_COACH, seatsLeft);
+            const rows = Math.ceil(coachCapacity / COLUMNS.length);
+
+            for (let r = 1; r <= rows; r++) {
+                for (const col of COLUMNS) {
+                    if (seatsToCreate.length >= totalCapacity) break;
+                    seatsToCreate.push({
+                        schedule: schedule._id,
+                        coach: String(c),
+                        seatNumber: `${col}${r}`,
+                        status: 'AVAILABLE'
+                    });
+                }
+            }
+            seatsLeft -= coachCapacity;
+        }
+
+        await Seat.insertMany(seatsToCreate);
         res.status(201).json(schedule);
     } catch (error) {
         res.status(400).json({ message: 'Server Error: ' + error.message });
